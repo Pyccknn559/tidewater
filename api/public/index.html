@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tidewater – crypto trading platform</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#eef2f4;--pn:#fff;--ink:#12212b;--mu:#5b6b76;--ln:#d5dde2;--ac:#0b5fa5;--up:#0f7b5f;--dn:#b4432f;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#0f1a21;--pn:#172630;--ink:#e6eef2;--mu:#8fa2ad;--ln:#26404e;--ac:#5aa9e6;--up:#3ccf9f;--dn:#f0836d}}
+:root[data-theme=dark]{--bg:#0f1a21;--pn:#172630;--ink:#e6eef2;--mu:#8fa2ad;--ln:#26404e;--ac:#5aa9e6;--up:#3ccf9f;--dn:#f0836d}
+*{box-sizing:border-box}html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 "IBM Plex Sans",system-ui,sans-serif}
+header{padding:14px 16px 8px}h1{margin:0;font-size:20px}
+.tot{font-size:26px;font-weight:600}.mu{color:var(--mu);font-size:13px}
+nav{display:flex;gap:4px;overflow-x:auto;padding:0 12px;border-bottom:1px solid var(--ln);position:sticky;top:env(safe-area-inset-top,0px);background:var(--bg);z-index:2}
+nav button{flex:none;background:none;border:0;border-bottom:3px solid transparent;color:var(--mu);padding:10px 10px;font:inherit;cursor:pointer}
+nav button.on{color:var(--ink);border-color:var(--ac);font-weight:600}
+main{padding:14px 12px;max-width:760px;margin:auto}
+.c{background:var(--pn);border:1px solid var(--ln);border-radius:10px;padding:14px;margin-bottom:12px}
+h2{font-size:16px;margin:0 0 10px}
+label{display:block;font-size:13px;color:var(--mu);margin:8px 0 3px}
+input,select,textarea{width:100%;padding:10px;border:1px solid var(--ln);border-radius:8px;background:var(--bg);color:var(--ink);font:inherit}
+textarea{font:12px/1.4 ui-monospace,monospace;height:190px}
+button.b{padding:10px 14px;border:0;border-radius:8px;background:var(--ac);color:#fff;font:inherit;font-weight:600;cursor:pointer;margin-top:10px}
+button.b.up{background:var(--up)}button.b.dn{background:var(--dn)}button.b.g{background:none;color:var(--ac);border:1px solid var(--ac)}
+.row{display:flex;justify-content:space-between;gap:8px;padding:7px 0;border-bottom:1px solid var(--ln)}.row:last-child{border:0}
+.up{color:var(--up)}.dn{color:var(--dn)}.two{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.ad{word-break:break-all;font:12px ui-monospace,monospace;color:var(--mu)}
+#msg{position:fixed;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:10px 14px;border-radius:8px;display:none;z-index:5}
+.note{font-size:12px;color:var(--mu);margin-top:8px}svg{width:100%;height:110px;display:block}
+</style></head><body>
+<header><h1>Tidewater</h1><div class="mu" id="mode">Paper-money mode</div><div class="tot" id="tot"></div><div class="mu" id="cash"></div></header>
+<nav id="nav"></nav><main id="v"></main><div id="msg"></div>
+<script>
+const $=s=>document.querySelector(s);
+const H=(n=32)=>[...Array(n)].map(()=>"0123456789abcdef"[Math.random()*16|0]).join("");
+const B58="123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+const b58=n=>[...Array(n)].map(()=>B58[Math.random()*58|0]).join("");
+const T={BTC:{p:65000,v:.012},ETH:{p:3400,v:.015},SOL:{p:150,v:.02},XRP:{p:.55,v:.02},DOGE:{p:.16,v:.03}};
+const S={cash:10000,hold:{},hist:{},off:{},addr:{},bots:[],toks:[],tab:"Trade",sym:"BTC",n:0};
+try{const s=JSON.parse(localStorage.getItem("tw")||"null");if(s){S.cash=s.cash;S.hold=s.hold;S.bots=s.bots||[];S.toks=s.toks||[];S.addr=s.addr||{};S.toks.forEach(t=>T[t.sym]={p:t.p,v:.035})}}catch(e){}
+const save=()=>{try{localStorage.setItem("tw",JSON.stringify({cash:S.cash,hold:S.hold,bots:S.bots,toks:S.toks,addr:S.addr}))}catch(e){}};
+const mkAddr=s=>s=="BTC"?"bc1q"+H(38):s=="SOL"?b58(44):s=="XRP"?"r"+b58(33):s=="DOGE"?"D"+b58(33):"0x"+H(40);
+const init=()=>Object.keys(T).forEach(s=>{S.hist[s]=S.hist[s]||Array(40).fill(T[s].p);S.off[s]=S.off[s]||{A:0,B:0};S.hold[s]=S.hold[s]||0;S.addr[s]=S.addr[s]||mkAddr(s)});init();
+const P=s=>T[s].p,ex=(s,e)=>P(s)*(1+S.off[s][e]);
+const f=(x,d)=>x.toLocaleString("en-US",{maximumFractionDigits:d??(x<1?4:x<100?3:2)});
+const $$=x=>"$"+f(x,2);
+const toast=t=>{const m=$("#msg");m.textContent=t;m.style.display="block";clearTimeout(toast.t);toast.t=setTimeout(()=>m.style.display="none",2600)};
+const worth=()=>S.cash+Object.keys(S.hold).reduce((a,s)=>a+S.hold[s]*P(s),0);
+function buy(s,usd,q){if(usd<=0||usd>S.cash+1e-9)return q||toast("Not enough cash");S.cash-=usd;S.hold[s]+=usd/P(s);save();return 1}
+function sell(s,u,q){if(u<=0||u>S.hold[s]+1e-12)return q||toast("Not enough "+s);S.hold[s]-=u;S.cash+=u*P(s);save();return 1}
+const LIVE={on:false};
+async function pull(){try{const r=await fetch("/api/prices");if(!r.ok)throw 0;const j=await r.json();
+ Object.entries(j.prices).forEach(([s,x])=>{if(!T[s]||!x.coinbase||!x.kraken)return;const m=(x.coinbase+x.kraken)/2;T[s].p=m;S.off[s].A=x.coinbase/m-1;S.off[s].B=x.kraken/m-1});LIVE.on=true}catch(e){LIVE.on=false}}
+function tick(){S.n++;Object.keys(T).forEach(s=>{const t=T[s];if(!LIVE.on)t.p*=1+(Math.random()-.5)*2*t.v*.3;const h=S.hist[s];h.push(t.p);if(h.length>120)h.shift();
+ if(!LIVE.on)["A","B"].forEach(e=>S.off[s][e]=S.off[s][e]*.9+(Math.random()-.5)*.012)});
+ $("#mode").textContent=LIVE.on?"Live prices · Coinbase + Kraken · paper-money mode":"Simulated prices · paper-money mode";
+ S.bots.forEach(b=>{if(!b.on)return;const h=S.hist[b.sym],p=P(b.sym);
+  if(b.type=="DCA"&&S.n%8==0&&buy(b.sym,b.amt,1))b.log++;
+  if(b.type=="Momentum"&&S.n%3==0){const a=h.slice(-6,-1).reduce((x,y)=>x+y)/5;if(p>a*1.002&&buy(b.sym,b.amt,1))b.log++;else if(p<a*.998&&sell(b.sym,Math.min(b.amt/p,S.hold[b.sym]),1))b.log++}
+  if(b.type=="Grid"){b.ref=b.ref||p;if(p<b.ref*.994&&buy(b.sym,b.amt,1)){b.ref=p;b.log++}else if(p>b.ref*1.006&&sell(b.sym,Math.min(b.amt/p,S.hold[b.sym]),1)){b.ref=p;b.log++}}});
+ $("#tot").textContent=$$(worth());$("#cash").textContent="Cash "+$$(S.cash)+" · portfolio value";
+ document.querySelectorAll("[data-p]").forEach(e=>e.textContent=$$(P(e.dataset.p)));
+ if(["Arbitrage","Bots","Forecast"].includes(S.tab)||S.tab=="Trade"&&S.n%2==0)draw(1)}
+const spark=s=>{const h=S.hist[s],lo=Math.min(...h),hi=Math.max(...h)||1,r=hi-lo||1;const pts=h.map((v,i)=>(i/(h.length-1)*300).toFixed(1)+","+(100-(v-lo)/r*90-5).toFixed(1)).join(" ");
+ return `<svg viewBox="0 0 300 100" preserveAspectRatio="none"><polyline fill="none" stroke="${h[h.length-1]>=h[0]?"var(--up)":"var(--dn)"}" stroke-width="2" points="${pts}"/></svg>`};
+const opts=(sel,all)=>Object.keys(T).map(s=>`<option ${s==sel?"selected":""}>${s}</option>`).join("");
+const TABS=["Trade","Convert","Wallets","Arbitrage","Bots","Forecast","Token"];
+$("#nav").innerHTML=TABS.map(t=>`<button data-t="${t}">${t}</button>`).join("");
+$("#nav").onclick=e=>{if(e.target.dataset.t){S.tab=e.target.dataset.t;draw()}};
+const V={
+Trade(){const s=S.sym;return `<div class="c"><label>Market</label><select id="sy">${opts(s)}</select>
+<div style="font-size:24px;font-weight:600;margin-top:8px" data-p="${s}">${$$(P(s))}</div><div id="ch">${spark(s)}</div>
+<div class="mu">You hold ${f(S.hold[s],6)} ${s}</div>
+<label>Amount in USD (buy) or ${s} (sell)</label><input id="am" type="number" inputmode="decimal" placeholder="100">
+<div class="two"><button class="b up" id="by">Buy</button><button class="b dn" id="sl">Sell</button></div>
+<div class="note">Day trading runs around the clock. Fills happen instantly at the market price.</div></div>`},
+Convert(){return `<div class="c"><h2>Convert one crypto to another</h2><div class="two"><div><label>From</label><select id="cf">${opts("BTC")}</select></div><div><label>To</label><select id="ct">${opts("ETH")}</select></div></div>
+<label>Amount to convert</label><input id="ca" type="number" inputmode="decimal" placeholder="0.01"><div class="mu" id="cq" style="margin-top:8px"></div>
+<button class="b" id="cg">Convert</button><div class="note">0.2% fee applied.</div></div>`},
+Wallets(){return `<div class="c"><h2>Your wallets</h2>${Object.keys(T).map(s=>`<div class="row"><div><b>${s}</b><div class="ad">${S.addr[s]}</div></div><div style="text-align:right">${f(S.hold[s],6)}<div class="mu">${$$(S.hold[s]*P(s))}</div></div></div>`).join("")}
+<div class="note">Addresses here are placeholders for paper trading. Do not send real funds to them.</div></div>`},
+Arbitrage(){const rows=Object.keys(T).map(s=>{const a=ex(s,"A"),b=ex(s,"B"),lo=a<b?"A":"B",hi=lo=="A"?"B":"A",pc=(ex(s,hi)/ex(s,lo)-1)*100-.2;return{s,lo,hi,pc,l:ex(s,lo),h:ex(s,hi)}}).sort((x,y)=>y.pc-x.pc);
+return `<div class="c"><h2>Arbitrage scanner</h2><div class="mu">Price gaps between Exchange A and B, after a 0.2% round-trip fee.</div>${rows.map(r=>`<div class="row"><div><b>${r.s}</b><div class="mu">Buy on ${r.lo} ${$$(r.l)} · sell on ${r.hi} ${$$(r.h)}</div></div><div style="text-align:right"><b class="${r.pc>0?"up":"dn"}">${r.pc.toFixed(2)}%</b><br>${r.pc>0?`<button class="b g" data-arb="${r.s}" style="margin:2px 0 0;padding:4px 8px">Run $500</button>`:""}</div></div>`).join("")}</div>
+<div class="c"><label>Auto-arbitrage above (%)</label><input id="at" type="number" value="${S.aat||0.3}" step="0.1"><div class="mu" id="as">${S.auto?"Auto-arbitrage is on":"Auto-arbitrage is off"}</div><button class="b" id="ab">${S.auto?"Turn off":"Turn on"}</button></div>`},
+Bots(){return `<div class="c"><h2>New trading bot</h2><div class="two"><div><label>Strategy</label><select id="bt"><option>Grid</option><option>DCA</option><option>Momentum</option></select></div><div><label>Coin</label><select id="bs">${opts("BTC")}</select></div></div>
+<label>USD per trade</label><input id="bm" type="number" value="100"><button class="b" id="bn">Start bot</button>
+<div class="note">Grid buys dips and sells rallies. DCA buys on a schedule. Momentum follows short-term trend.</div></div>
+<div class="c"><h2>Your bots</h2>${S.bots.length?S.bots.map((b,i)=>`<div class="row"><div><b>${b.type} · ${b.sym}</b><div class="mu">$${b.amt} per trade · ${b.log} trades</div></div><div><button class="b g" data-bt="${i}" style="margin:0">${b.on?"Pause":"Resume"}</button> <button class="b g" data-bd="${i}" style="margin:0">Delete</button></div></div>`).join(""):'<div class="mu">No bots yet. Start one above.</div>'}</div>`},
+Forecast(){const s=S.sym,h=S.hist[s],r=h.slice(1).map((v,i)=>Math.log(v/h[i])),m=r.reduce((a,b)=>a+b)/r.length,sd=Math.sqrt(r.reduce((a,b)=>a+(b-m)**2,0)/r.length),p=P(s);
+const sh=p*Math.exp(m*20),z=[["1 month",T[s].v*.6*Math.sqrt(30)],["1 year",T[s].v*.6*Math.sqrt(365)]];
+return `<div class="c"><label>Coin</label><select id="fy">${opts(s)}</select><h2 style="margin-top:12px">Short term</h2><div class="row"><span>Trend signal</span><b class="${m>=0?"up":"dn"}">${m>=0?"Rising":"Falling"} · ${sh>p?"+":""}${((sh/p-1)*100).toFixed(2)}% next few ticks</b></div>${spark(s)}</div>
+<div class="c"><h2>Long term scenarios</h2>${z.map(([n,v])=>`<div class="row"><span>${n}</span><span><span class="dn">${$$(p*Math.exp(-v))}</span> · <b>${$$(p)}</b> · <span class="up">${$$(p*Math.exp(v))}</span></span></div>`).join("")}<div class="mu">Low · today · high. Ranges come from the coin's recent volatility. Forecasts are estimates, not advice.</div></div>`},
+Token(){return `<div class="c"><h2>Create your own token</h2><div class="two"><div><label>Name</label><input id="tn" placeholder="Harbor Coin"></div><div><label>Symbol</label><input id="ts" placeholder="HBR" maxlength="6"></div></div>
+<div class="two"><div><label>Total supply</label><input id="tu" type="number" value="1000000"></div><div><label>Launch price (USD)</label><input id="tp" type="number" value="0.10" step="0.01"></div></div>
+<label><input type="checkbox" id="tm" style="width:auto"> Owner can mint more</label><label><input type="checkbox" id="tb" style="width:auto" checked> Holders can burn</label>
+<button class="b" id="tg">Create token</button></div>${S.toks.map(t=>`<div class="c"><b>${t.name} (${t.sym})</b><div class="mu">Supply ${f(t.sup,0)} · listed at ${$$(t.p)}</div><label>Contract code</label><textarea readonly>${t.code}</textarea><div class="note">Paper token only. Deploying on a real network requires a funded wallet and a security review.</div></div>`).join("")}`}
+};
+function code(n,s,sup,mint,burn){return `// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+${burn?'import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";\n':""}import "@openzeppelin/contracts/access/Ownable.sol";
+
+contract ${n.replace(/[^A-Za-z0-9]/g,"")||"Token"} is ERC20${burn?", ERC20Burnable":""}, Ownable {
+    constructor(address owner) ERC20("${n}", "${s}") Ownable(owner) {
+        _mint(owner, ${sup} * 10 ** decimals());
+    }${mint?`
+    function mint(address to, uint256 amount) external onlyOwner {
+        _mint(to, amount);
+    }`:""}
+}`}
+function draw(keep){const el=$("#v");if(keep&&el.querySelector("input:focus,select:focus"))return;
+ document.querySelectorAll("nav button").forEach(b=>b.classList.toggle("on",b.dataset.t==S.tab));el.innerHTML=V[S.tab]();wire()}
+function wire(){const g=i=>document.getElementById(i),on=(i,fn)=>g(i)&&(g(i).onclick=fn);
+ if(g("sy"))g("sy").onchange=e=>{S.sym=e.target.value;draw()};if(g("fy"))g("fy").onchange=e=>{S.sym=e.target.value;draw()};
+ on("by",()=>{const v=+g("am").value;buy(S.sym,v)&&(toast("Bought "+f(v/P(S.sym),6)+" "+S.sym),draw())});
+ on("sl",()=>{const v=+g("am").value;sell(S.sym,v,0)&&(toast("Sold "+f(v,6)+" "+S.sym),draw())});
+ if(g("cf")){const q=()=>{const a=+g("ca").value,fr=g("cf").value,to=g("ct").value;g("cq").textContent=a?`You receive ≈ ${f(a*P(fr)/P(to)*.998,6)} ${to}`:""};["cf","ct","ca"].forEach(i=>g(i).oninput=q);
+  on("cg",()=>{const a=+g("ca").value,fr=g("cf").value,to=g("ct").value;if(fr==to||!(a>0))return toast("Choose two different coins and an amount");if(a>S.hold[fr])return toast("Not enough "+fr);S.hold[fr]-=a;const o=a*P(fr)/P(to)*.998;S.hold[to]+=o;save();toast(`Converted to ${f(o,6)} ${to}`);draw()})}
+ document.querySelectorAll("[data-arb]").forEach(b=>b.onclick=()=>arb(b.dataset.arb,500));
+ if(g("at"))g("at").oninput=e=>S.aat=+e.target.value;on("ab",()=>{S.auto=!S.auto;draw()});
+ on("bn",()=>{S.bots.push({type:g("bt").value,sym:g("bs").value,amt:+g("bm").value||100,on:1,log:0});save();toast("Bot started");draw()});
+ document.querySelectorAll("[data-bt]").forEach(b=>b.onclick=()=>{S.bots[b.dataset.bt].on^=1;save();draw()});
+ document.querySelectorAll("[data-bd]").forEach(b=>b.onclick=()=>{S.bots.splice(b.dataset.bd,1);save();draw()});
+ on("tg",()=>{const n=g("tn").value.trim(),s=g("ts").value.trim().toUpperCase(),u=Math.floor(+g("tu").value),p=+g("tp").value;
+  if(!n||!s||!(u>0)||!(p>0))return toast("Enter a name, symbol, supply, and price");if(T[s])return toast("That symbol is already taken");
+  T[s]={p,v:.035};S.toks.push({name:n,sym:s,sup:u,p,code:code(n,s,u,g("tm").checked,g("tb").checked)});init();S.hold[s]=u;save();toast(s+" created and listed");draw()})}
+function arb(s,usd){const a=ex(s,"A"),b=ex(s,"B"),lo=Math.min(a,b),hi=Math.max(a,b),pc=hi/lo-1-.002;if(pc<=0)return toast("Gap closed");if(usd>S.cash)return toast("Not enough cash");S.cash+=usd*pc;save();toast(`${s} arbitrage: +${$$(usd*pc)}`)}
+setInterval(()=>{if(S.auto)Object.keys(T).forEach(s=>{const a=ex(s,"A"),b=ex(s,"B");if((Math.max(a,b)/Math.min(a,b)-1)*100-.2>(S.aat||.3))arb(s,300)});tick()},1500);
+pull();setInterval(pull,4000);draw();tick();
+</script></body></html>
